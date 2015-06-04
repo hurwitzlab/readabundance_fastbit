@@ -1,4 +1,4 @@
-BASE_DIR=/home/u20/kyclark/work/readabundance_pov
+BASE_DIR=/home/u20/kyclark/work/readabundance_fastbit/data/16s
 IN_DIR=$BASE_DIR/csv
 OUT_DIR=$BASE_DIR/fastbit
 

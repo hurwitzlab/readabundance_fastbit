@@ -110,21 +110,36 @@ mk-csv.pl - create the CSV files for Fastbit
 
 =head1 SYNOPSIS
 
-  mk-csv.pl 
+  mk-csv.pl -i input_dir -o output_dir
 
 Options:
 
-  --help   Show brief help and exit
-  --man    Show full documentation
+  -i|--in   Input directory
+  -o|--out  Ouput directory
+  --help    Show brief help and exit
+  --man     Show full documentation
 
 =head1 DESCRIPTION
 
-Describe what the script does, what input it expects, what output it
-creates, etc.
+Expects "in" directory to contain directories that each contain 
+tab-delimited files with read id/mode values, e.g.:
 
-=head1 SEE ALSO
+  in/
+    A/
+      B.txt
+      C.txt
+    B/
+      A.txt
+      C.txt
+    C/
+      A.txt
+      B.txt
 
-perl.
+The "out" directory will have CSV files in directories with the same 
+names as the files in the "in" directory that contain a complete 
+matrix of every read's mode to every other file.  There will also be a 
+"meta" file showing the file numbers (1, 2, ...) to their file names
+that will correspond to the "f1," "f2," etc., column names for Fastbit.
 
 =head1 AUTHOR
 
@@ -132,7 +147,7 @@ Ken Youens-Clark E<lt>kyclark@email.arizona.eduE<gt>.
 
 =head1 COPYRIGHT
 
-Copyright (c) 2015 kyclark
+Copyright (c) 2015 Hurwitz Lab
 
 This module is free software; you can redistribute it and/or
 modify it under the terms of the GPL (either version 1, or at
