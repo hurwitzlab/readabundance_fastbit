@@ -85,8 +85,8 @@ sub main {
         open my $out_fh, '>', $out_file;
 
         my $max_read_id = max(keys %read_matrix);
-        for my $read_id (0 .. $max_read_id) {
-            my @vals = map { $read_matrix{ $read_id }{ $_ } || 0 } 
+        for my $read_id (1 .. $max_read_id) {
+            my @vals = map { $read_matrix{ $read_id }{ $_ } ? 1 : 0 } 
                        @ordered_fnums;
             say $out_fh join(',', $read_id, @vals); 
         }
