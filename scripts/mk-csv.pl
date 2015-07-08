@@ -2,29 +2,101 @@
 
 use common::sense;
 use autodie;
+use Bit::Vector;
 use Data::Dump 'dump';
+use Hurwitz::Utils qw'commify timer_calc';
 use File::Basename qw(basename dirname);
 use File::Find::Rule;
 use File::Spec::Functions;
 use File::Path 'make_path';
 use List::Util 'max';
-use List::MoreUtils 'uniq';
+use List::MoreUtils qw'all uniq';
+use Math::Round 'round';
 use Getopt::Long;
 use Pod::Usage;
 use Readonly;
+
+# --------------------------------------------------
+package ModeFile;
+
+sub new {
+    my $class = shift;
+    my $file  = shift;
+    my $fnum  = shift;
+
+    open my $fh, '<', $file;
+
+    my $obj = { 
+        file         => $file, 
+        fnum         => $fnum, 
+        fh           => $fh, 
+        last_read_id => 0,
+        last_mode    => 0,
+        is_exhausted => 0,
+    };
+
+    return bless $obj, $class;
+}
+
+# --------------------------------------------------
+sub find {
+    my ($self, $read_id) = @_;
+
+    if ($read_id == $self->{'last_read_id'}) {
+        return ($self->{'fnum'}, $self->{'last_mode'})
+    }
+    elsif ($read_id < $self->{'last_read_id'}) {
+        return ($self->{'fnum'}, 0);
+    }
+    elsif ($read_id > $self->{'last_read_id'}) {
+        if ($self->{'is_exhausted'}) {
+            return ($self->{'fnum'}, 0);
+        }
+
+        my $fh   = $self->{'fh'};
+        my $line = <$fh>;
+
+        if (!defined $line) {
+            $self->{'is_exhausted'} = 1;
+            return ($self->{'fnum'}, 0);
+        }
+
+        if ($line =~ /(\d+)\t(\d+)\n/) {
+            my ($file_read_id, $mode) = ($1, $2);
+
+            $self->{'last_read_id'} = $file_read_id;
+            $self->{'last_mode'}    = $mode;
+
+            if ($read_id == $file_read_id) {
+                return ($self->{'fnum'}, $mode);
+            }
+            elsif ($file_read_id > $read_id) {
+                return ($self->{'fnum'}, 0);
+            }
+        }
+        else {
+            return $self->find($read_id);
+        }
+    }
+}
+
+# --------------------------------------------------
+package main;
 
 main();
 
 # --------------------------------------------------
 sub main {
-    my $in_dir  = '';
-    my $out_dir = '';
+    my $in_dir   = '';
+    my $out_dir  = '';
+    my $min_mode = 1;
     my ($help, $man_page);
     GetOptions(
-        'in=s'  => \$in_dir,
-        'out=s' => \$out_dir,
-        'help'  => \$help,
-        'man'   => \$man_page,
+        'in=s'    => \$in_dir,
+        'out=s'   => \$out_dir,
+        'm|min:i' => \$min_mode,
+        'help'    => \$help,
+        'man'     => \$man_page,
     ) or pod2usage(2);
 
     if ($help || $man_page) {
@@ -44,58 +116,70 @@ sub main {
 
     say "Search for files in directory '$in_dir'";
     my @files = File::Find::Rule->file()->in($in_dir);
+    printf "Found %s files.\n", commify(scalar @files);
 
     unless (@files) {
         die "No files found\n";
     }
 
-    my $nfile = 1;
-    my %uniq  = map { $_, $nfile++ } uniq(map { basename($_) } @files);
-    my %copy  = %uniq;
-    my @ordered_fnums = sort { $a <=> $b } values %uniq;
+    my $timer = timer_calc();
+    process(out_dir => $out_dir, min_mode => $min_mode, files => \@files);
 
-    printf "Found %s files, %s unique.\n", scalar @files, scalar keys %uniq;
+    printf "Finished in %s\n", $timer->();
+}
 
-    open my $meta_fh, '>', catfile($out_dir, 'meta');
+# --------------------------------------------------
+sub process {
+    my %args     = @_;
+    my $min_mode = $args{'min_mode'};
+    my $out_dir  = $args{'out_dir'};
+    my $files    = $args{'files'};
+    my $file_ct  = 0;
+    my %file_num = map {$_, ++$file_ct} sort(uniq(map {basename($_)} @$files));
+    #say dump(\%file_num);
+
     my $i;
-    while (my ($file, $file_num) = each %uniq) {
-        my %read_matrix;
+    for my $fname (sort keys %file_num) {
+        printf "%5d: %s", ++$i, $fname;
+        my $timer = timer_calc();
 
-        printf "%5d: %s\n", ++$i, $file;
+        my $cur_fnum = $file_num{ $fname };
 
-        say $meta_fh join("\t", $file, $file_num);
-
-        while (my ($other_file, $other_file_num) = each %copy) {
-            next if $other_file eq $file;
-            my $path = catdir($in_dir, $other_file, $file);
-            next unless -e $path;
-
-            open my $fh, '<', $path;
-
-            while (my $line = <$fh>) {
-                chomp($line);
-                my ($read_id, $mode) = split("\t", $line);
-                $read_matrix{ $read_id }{ $other_file_num } = $mode;
-            }
-
-            close $fh;
+        my @fhs;
+        for my $loc (grep { basename($_) eq $fname } @$files) {
+            my $fnum = $file_num{ basename(dirname($loc)) };
+            push @fhs, ModeFile->new($loc, $fnum);
         }
 
-        my $out_file = catfile($out_dir, $file . '.csv');
-        open my $out_fh, '>', $out_file;
+        open my $out_fh, '>', catfile($out_dir, $fname);
 
-        my $max_read_id = max(keys %read_matrix);
-        for my $read_id (1 .. $max_read_id) {
-            my @vals = map { $read_matrix{ $read_id }{ $_ } ? 1 : 0 } 
-                       @ordered_fnums;
-            say $out_fh join(',', $read_id, @vals); 
+        my $next_read_id = 0;
+        while (1) {
+            $next_read_id++;
+            my %vals = map { $_->find($next_read_id) } @fhs;
+
+            last if all { $_ == 1 } (map { $_->{'is_exhausted'} } @fhs);
+
+            my @bin;
+            for my $fnum (1 .. $file_ct) {
+                my $val = 0;
+                if ($fnum == $cur_fnum) {
+                    $val = 1;
+                }
+                else {
+                    $val = $vals{ $fnum } >= $min_mode ? 1 : 0 
+                }
+                push @bin, $val;
+            }
+
+            my $num_pos = grep { $_ > 0 } @bin;
+            push @bin, round(($num_pos / scalar @bin) * 100);
+            say $out_fh join(',', $next_read_id, @bin);
         }
 
         close $out_fh;
+        say ' (', $timer->(), ')';
     }
-    close $meta_fh;
-
-    say "Done.";
 }
 
 __END__
@@ -126,14 +210,19 @@ tab-delimited files with read id/mode values, e.g.:
 
   in/
     A/
-      B.txt
-      C.txt
+      B
+      C
     B/
-      A.txt
-      C.txt
+      A
+      C
     C/
-      A.txt
-      B.txt
+      A
+      B
+
+  cat A/B
+  1   4
+  2   0
+  3   1
 
 The "out" directory will have CSV files in directories with the same 
 names as the files in the "in" directory that contain a complete 
