@@ -101,10 +101,10 @@ sub main {
     my $min_mode     = 1;
     my ($help, $man_page);
     GetOptions(
-        'target:s' => \$target_files,
-        'dir=s'    => \$in_dir,
+        'in=s'     => \$in_dir,
         'out=s'    => \$out_dir,
         'm|min:i'  => \$min_mode,
+        'target:s' => \$target_files,
         'help'     => \$help,
         'man'      => \$man_page,
     ) or pod2usage(2);
@@ -167,7 +167,6 @@ sub process {
         }
 
         printf "%5d: %s", ++$i, $fname;
-        next;
         my $timer    = timer_calc();
         my $cur_fnum = $file_num{ $fname };
 
@@ -181,10 +180,10 @@ sub process {
 
         open my $out_fh, '>', catfile($out_dir, $fname);
 
-        my $next_read_id = 0;
+        my $read_id = 0;
         while (1) {
-            $next_read_id++;
-            my %vals = map { $_->find($next_read_id) } @fhs;
+            $read_id++;
+            my %vals = map { $_->find($read_id) } @fhs;
 
             last if all { $_->is_exhausted } @fhs;
 
@@ -195,15 +194,18 @@ sub process {
                     $val = 1;
                 }
                 else {
-                    $val = $vals{ $fnum } >= $min_mode ? 1 : 0 
+                    $val = $vals{ $fnum } >= $min_mode ? $vals{ $fnum } : 0 
                 }
 
                 push @bin, $val;
             }
 
+            # 
+            # Add the percent that have a positive mode
+            # 
             my $num_pos = grep { $_ > 0 } @bin;
             push @bin, round(($num_pos / scalar @bin) * 100);
-            say $out_fh join(',', $next_read_id, @bin);
+            say $out_fh join(',', $read_id, @bin);
         }
 
         close $out_fh;
@@ -223,14 +225,20 @@ mk-csv.pl - create the CSV files for Fastbit
 
 =head1 SYNOPSIS
 
-  mk-csv.pl -i input_dir -o output_dir
+  mk-csv.pl -i in_dir -o out_dir
+
+Required Arguments:
+
+  -i|--in       Input directory
+  -o|--out      Ouput directory
 
 Options:
 
-  -i|--in   Input directory
-  -o|--out  Ouput directory
-  --help    Show brief help and exit
-  --man     Show full documentation
+  -m|--min      Minimum mode value
+  -t|--target   Comma-separated ist of target files to limit
+                processing to all the other files in "in" directory
+  --help        Show brief help and exit
+  --man         Show full documentation
 
 =head1 DESCRIPTION
 
