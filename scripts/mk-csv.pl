@@ -95,18 +95,18 @@ main();
 
 # --------------------------------------------------
 sub main {
-    my $in_dir   = '';
-    my $in_file  = '';
-    my $out_dir  = '';
-    my $min_mode = 1;
+    my $in_dir       = '';
+    my $target_files = '';
+    my $out_dir      = '';
+    my $min_mode     = 1;
     my ($help, $man_page);
     GetOptions(
-        'file=s'  => \$in_file,
-        'dir=s'   => \$in_dir,
-        'out=s'   => \$out_dir,
-        'm|min:i' => \$min_mode,
-        'help'    => \$help,
-        'man'     => \$man_page,
+        'target:s' => \$target_files,
+        'dir=s'    => \$in_dir,
+        'out=s'    => \$out_dir,
+        'm|min:i'  => \$min_mode,
+        'help'     => \$help,
+        'man'      => \$man_page,
     ) or pod2usage(2);
 
     if ($help || $man_page) {
@@ -136,20 +136,14 @@ sub main {
         pod2usage("No input files found.");
     }
 
-    if ($in_file) {
-        unless (-e $in_file) {
-            pod2usage("Bad input file ($in_file)");
-        }
-
-        say "Using input file '$in_file'";
-    }
-
-    my $timer = timer_calc();
+    my %target_files = map { $_, 1 } split(/\s*,\s*/, $target_files);
+    my $timer        = timer_calc();
 
     process(
         out_dir  => $out_dir,
         min_mode => $min_mode,
         files    => \@files,
+        targets  => \%target_files,
     );
 
     printf "Finished in %s\n", $timer->();
@@ -161,12 +155,19 @@ sub process {
     my $min_mode = $args{'min_mode'};
     my $out_dir  = $args{'out_dir'};
     my $files    = $args{'files'};
+    my $targets  = $args{'targets'};
     my $file_ct  = 0;
     my %file_num = map {$_, ++$file_ct} sort(uniq(map {basename($_)} @$files));
 
     my $i;
+    FILE:
     for my $fname (sort keys %file_num) {
+        if (%$targets && !$targets->{ $fname }) {
+            next FILE;
+        }
+
         printf "%5d: %s", ++$i, $fname;
+        next;
         my $timer    = timer_calc();
         my $cur_fnum = $file_num{ $fname };
 
