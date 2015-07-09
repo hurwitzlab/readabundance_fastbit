@@ -5,73 +5,79 @@ use autodie;
 use Bit::Vector;
 use Data::Dump 'dump';
 use Hurwitz::Utils qw'commify timer_calc';
-use File::Basename qw(basename dirname);
+use File::Basename qw'basename dirname';
 use File::Find::Rule;
-use File::Spec::Functions;
+use File::Spec::Functions qw'catfile';
 use File::Path 'make_path';
 use List::Util 'max';
 use List::MoreUtils qw'all uniq';
 use Math::Round 'round';
-use Getopt::Long;
-use Pod::Usage;
+use Getopt::Long 'GetOptions';
+use Pod::Usage 'pod2usage';
 use Readonly;
 
 # --------------------------------------------------
 package ModeFile;
 
-sub new {
-    my $class = shift;
-    my $file  = shift;
-    my $fnum  = shift;
+use Moose;
+use Moose::Util::TypeConstraints;
 
-    open my $fh, '<', $file;
+has filename     => (is => 'rw', isa => 'Str');
+has fnum         => (is => 'rw', isa => 'Int'); 
+has fh           => (is => 'rw', isa => 'FileHandle', lazy_build => 1);
+has last_read_id => (is => 'rw', isa => 'Int', default => 0);
+has last_mode    => (is => 'rw', isa => 'Int', default => 0); 
+has is_exhausted => (is => 'rw', isa => 'Int', default => 0); 
 
-    my $obj = { 
-        file         => $file, 
-        fnum         => $fnum, 
-        fh           => $fh, 
-        last_read_id => 0,
-        last_mode    => 0,
-        is_exhausted => 0,
-    };
+# --------------------------------------------------
+sub _build_fh {
+    my $self = shift;
+    open my $fh, '<', $self->filename;
+    $self->fh($fh);
+}
 
-    return bless $obj, $class;
+# --------------------------------------------------
+sub mode {
+    my $self = shift;
+    my $mode = shift // 0;
+
+    return ($self->fnum, $mode);
 }
 
 # --------------------------------------------------
 sub find {
     my ($self, $read_id) = @_;
 
-    if ($read_id == $self->{'last_read_id'}) {
-        return ($self->{'fnum'}, $self->{'last_mode'})
+    if ($read_id == $self->last_read_id) {
+        return $self->mode($self->last_mode);
     }
-    elsif ($read_id < $self->{'last_read_id'}) {
-        return ($self->{'fnum'}, 0);
+    elsif ($read_id < $self->last_read_id) {
+        return $self->mode(0);
     }
-    elsif ($read_id > $self->{'last_read_id'}) {
-        if ($self->{'is_exhausted'}) {
-            return ($self->{'fnum'}, 0);
+    elsif ($read_id > $self->last_read_id) {
+        if ($self->is_exhausted) {
+            return $self->mode(0);
         }
 
-        my $fh   = $self->{'fh'};
+        my $fh   = $self->fh;
         my $line = <$fh>;
 
         if (!defined $line) {
-            $self->{'is_exhausted'} = 1;
-            return ($self->{'fnum'}, 0);
+            $self->is_exhausted(1);
+            return ($self->fnum, 0);
         }
 
         if ($line =~ /(\d+)\t(\d+)\n/) {
             my ($file_read_id, $mode) = ($1, $2);
 
-            $self->{'last_read_id'} = $file_read_id;
-            $self->{'last_mode'}    = $mode;
+            $self->last_read_id($file_read_id);
+            $self->last_mode($mode);
 
             if ($read_id == $file_read_id) {
-                return ($self->{'fnum'}, $mode);
+                return $self->mode($mode);
             }
             elsif ($file_read_id > $read_id) {
-                return ($self->{'fnum'}, 0);
+                return $self->mode(0);
             }
         }
         else {
@@ -79,6 +85,8 @@ sub find {
         }
     }
 }
+
+__PACKAGE__->meta->make_immutable;
 
 # --------------------------------------------------
 package main;
@@ -88,11 +96,13 @@ main();
 # --------------------------------------------------
 sub main {
     my $in_dir   = '';
+    my $in_file  = '';
     my $out_dir  = '';
     my $min_mode = 1;
     my ($help, $man_page);
     GetOptions(
-        'in=s'    => \$in_dir,
+        'file=s'  => \$in_file,
+        'dir=s'   => \$in_dir,
         'out=s'   => \$out_dir,
         'm|min:i' => \$min_mode,
         'help'    => \$help,
@@ -106,24 +116,41 @@ sub main {
         });
     }; 
 
-    unless ($in_dir && -d $in_dir) {
-        pod2usage('Bad or missing input directory');
-    }
-
     unless (-d $out_dir) {
         make_path($out_dir);
     }
 
-    say "Search for files in directory '$in_dir'";
+    unless ($in_dir) {
+        pod2usage("Missing input directory");
+    }
+
+    unless (-d $in_dir) {
+        pod2usage("Bad input directory ($in_dir)");
+    }
+
+    say "Looking in '$in_dir'";
     my @files = File::Find::Rule->file()->in($in_dir);
     printf "Found %s files.\n", commify(scalar @files);
 
     unless (@files) {
-        die "No files found\n";
+        pod2usage("No input files found.");
+    }
+
+    if ($in_file) {
+        unless (-e $in_file) {
+            pod2usage("Bad input file ($in_file)");
+        }
+
+        say "Using input file '$in_file'";
     }
 
     my $timer = timer_calc();
-    process(out_dir => $out_dir, min_mode => $min_mode, files => \@files);
+
+    process(
+        out_dir  => $out_dir,
+        min_mode => $min_mode,
+        files    => \@files,
+    );
 
     printf "Finished in %s\n", $timer->();
 }
@@ -136,19 +163,19 @@ sub process {
     my $files    = $args{'files'};
     my $file_ct  = 0;
     my %file_num = map {$_, ++$file_ct} sort(uniq(map {basename($_)} @$files));
-    #say dump(\%file_num);
 
     my $i;
     for my $fname (sort keys %file_num) {
         printf "%5d: %s", ++$i, $fname;
-        my $timer = timer_calc();
-
+        my $timer    = timer_calc();
         my $cur_fnum = $file_num{ $fname };
 
         my @fhs;
-        for my $loc (grep { basename($_) eq $fname } @$files) {
-            my $fnum = $file_num{ basename(dirname($loc)) };
-            push @fhs, ModeFile->new($loc, $fnum);
+        for my $path (grep { basename($_) eq $fname } @$files) {
+            push @fhs, ModeFile->new(
+                filename => $path, 
+                fnum     => $file_num{ basename(dirname($path)) }
+            );
         }
 
         open my $out_fh, '>', catfile($out_dir, $fname);
@@ -158,7 +185,7 @@ sub process {
             $next_read_id++;
             my %vals = map { $_->find($next_read_id) } @fhs;
 
-            last if all { $_ == 1 } (map { $_->{'is_exhausted'} } @fhs);
+            last if all { $_->is_exhausted } @fhs;
 
             my @bin;
             for my $fnum (1 .. $file_ct) {
@@ -169,6 +196,7 @@ sub process {
                 else {
                     $val = $vals{ $fnum } >= $min_mode ? 1 : 0 
                 }
+
                 push @bin, $val;
             }
 
