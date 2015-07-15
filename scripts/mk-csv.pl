@@ -193,8 +193,8 @@ sub process {
                 if ($fnum == $cur_fnum) {
                     $val = 1;
                 }
-                else {
-                    $val = $vals{ $fnum } >= $min_mode ? $vals{ $fnum } : 0 
+                elsif (defined $vals{ $fnum }) {
+                    $val = $vals{ $fnum } >= $min_mode ? $vals{ $fnum } : 0;
                 }
 
                 push @bin, $val;
