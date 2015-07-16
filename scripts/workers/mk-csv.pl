@@ -48,6 +48,10 @@ sub mode {
 sub find {
     my ($self, $read_id) = @_;
 
+#    say "fnum = ", $self->fnum;
+#    say "filename = ", $self->filename;
+#    say "last_read_id = ", $self->last_read_id;
+
     if ($read_id == $self->last_read_id) {
         return $self->mode($self->last_mode);
     }
@@ -101,12 +105,12 @@ sub main {
     my $min_mode     = 1;
     my ($help, $man_page);
     GetOptions(
-        'in=s'     => \$in_dir,
-        'out=s'    => \$out_dir,
-        'm|min:i'  => \$min_mode,
-        'target:s' => \$target_files,
-        'help'     => \$help,
-        'man'      => \$man_page,
+        'in=s'      => \$in_dir,
+        'out=s'     => \$out_dir,
+        'm|min:i'   => \$min_mode,
+        'target:s'  => \$target_files,
+        'help'      => \$help,
+        'man'       => \$man_page,
     ) or pod2usage(2);
 
     if ($help || $man_page) {
@@ -128,7 +132,7 @@ sub main {
         pod2usage("Bad input directory ($in_dir)");
     }
 
-    say "Looking in '$in_dir'";
+    say "Looking for input files in '$in_dir'";
     my @files = File::Find::Rule->file()->in($in_dir);
     printf "Found %s files.\n", commify(scalar @files);
 
@@ -138,6 +142,14 @@ sub main {
 
     my %target_files = map { $_, 1 } split(/\s*,\s*/, $target_files);
     my $timer        = timer_calc();
+
+    if (%target_files) {
+        say join("\n", 
+            sprintf('Target files (%s)', scalar keys %target_files),
+            (map { " - $_" } sort keys %target_files), 
+            ''
+        );
+    }
 
     process(
         out_dir  => $out_dir,
@@ -172,10 +184,20 @@ sub process {
 
         my @fhs;
         for my $path (grep { basename($_) eq $fname } @$files) {
-            push @fhs, ModeFile->new(
-                filename => $path, 
-                fnum     => $file_num{ basename(dirname($path)) }
-            );
+            if (my $fnum = $file_num{ basename(dirname($path)) }) {
+                push @fhs, ModeFile->new(
+                    filename => $path, 
+                    fnum     => $fnum,
+                );
+            }
+            else {
+                say STDERR "Cannot find fnum for '$path'";
+            }
+        }
+
+        unless (@fhs) {
+            say STDERR "Found no mode files for '$fname'";
+            next FILE;
         }
 
         open my $out_fh, '>', catfile($out_dir, $fname);
