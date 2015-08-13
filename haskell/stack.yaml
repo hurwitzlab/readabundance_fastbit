@@ -1,0 +1,7 @@
+flags: {}
+packages:
+- '.'
+extra-deps: 
+- filemanip-0.3.6.3
+- directory-1.2.1.0
+resolver: lts-2.15

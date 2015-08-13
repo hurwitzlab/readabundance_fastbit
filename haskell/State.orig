@@ -1,0 +1,93 @@
+import System.IO
+import Control.Monad.Trans.State
+ 
+-- Example use of State monad
+-- Passes a string of dictionary {a,b,c}
+-- Game is to produce a number from the string.
+-- By default the game is off, a C toggles the
+-- game on and off. A 'a' gives +1 and a b gives -1.
+-- E.g 
+-- 'ab'    = 0
+-- 'ca'    = 1
+-- 'cabca' = 0
+-- State = game is on or off & current score
+--       = (Bool, Int)
+ 
+type GameValue = Int
+type GameState = (Bool, Int)
+ 
+playGame :: String -> State GameState GameValue
+playGame []     = do
+    (_, score) <- get
+    return score
+ 
+playGame (x:xs) = do
+    (on, score) <- get
+    case x of
+         'a' | on -> put (on, score + 1)
+         'b' | on -> put (on, score - 1)
+         'c'      -> put (not on, score)
+         _        -> put (on, score)
+    playGame xs
+ 
+startState = (False, 0)
+
+
+--type ReadState = (String, String)
+
+--go :: [String] -> State [Int] Int
+
+go [] = do
+  last <- get
+  return last
+
+go (x:xs) = do
+  prev <- get
+  let lastN = last prev
+  let nextN = succ(lastN)
+  if (x > nextN)
+    then do put $ prev ++ [nextN]
+            go (x:xs)
+    else do put $ prev ++ [x]
+            go xs 
+
+go2 [] = get
+
+go2 (x:xs) = do
+  prev <- get
+  let [n, v] = take 2 $ map (\x -> read x :: Int) $ words x
+  let (lastN, lastV) = last prev
+  let nextN = succ(lastN)
+  if (n > nextN)
+    then do put $ prev ++ [(nextN, 0)]
+            go2 (x:xs)
+    else do put $ prev ++ [(n,v)]
+            go2 xs 
+
+
+go3 fh = do
+  isEOF <- hIsEOF fh
+  prev <- get
+  if isEOF 
+    then return prev
+    else do
+      line <- liftIO $ hGetLine fh
+      let [n, v] = take 2 $ map (\x -> read x :: Int) $ words line
+      let (lastN, lastV) = last prev
+      let nextN = succ(lastN)
+      if (n > nextN)
+        then do put $ prev ++ [(nextN, 0)]
+                go3 fh
+        else do put $ prev ++ [(n,v)]
+                go3 fh
+
+main = do
+  --let s = [1,2,4]
+  --print $ evalState (go s) [0]
+
+  --let list = ["1\t4", "2\t1", "5\t2"]
+  --print $ evalState (go2 list) [(0,0)]
+
+  fh <- openFile "in" ReadMode
+
+  print $ evalStateT (go3 fh) [(0,0)]

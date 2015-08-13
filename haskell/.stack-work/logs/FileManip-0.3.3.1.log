@@ -1,0 +1,14 @@
+Configuring FileManip-0.3.3.1...
+Building FileManip-0.3.3.1...
+Preprocessing library FileManip-0.3.3.1...
+[1 of 5] Compiling System.FilePath.Error ( System/FilePath/Error.hs, .stack-work/dist/x86_64-osx/Cabal-1.22.4.0/build/System/FilePath/Error.o )
+
+System/FilePath/Error.hs:22:1: Warning:
+    Module ‘Prelude’ does not export ‘catch’
+[2 of 5] Compiling System.FilePath.Manip ( System/FilePath/Manip.hs, .stack-work/dist/x86_64-osx/Cabal-1.22.4.0/build/System/FilePath/Manip.o )
+[3 of 5] Compiling System.FilePath.GlobPattern ( System/FilePath/GlobPattern.hs, .stack-work/dist/x86_64-osx/Cabal-1.22.4.0/build/System/FilePath/GlobPattern.o )
+[4 of 5] Compiling System.FilePath.Glob ( System/FilePath/Glob.hs, .stack-work/dist/x86_64-osx/Cabal-1.22.4.0/build/System/FilePath/Glob.o )
+[5 of 5] Compiling System.FilePath.Find ( System/FilePath/Find.hs, .stack-work/dist/x86_64-osx/Cabal-1.22.4.0/build/System/FilePath/Find.o )
+
+System/FilePath/Find.hs:174:21:
+    Not in scope: data constructor ‘State’
