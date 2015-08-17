@@ -191,7 +191,7 @@ sub process {
                 );
             }
             else {
-                say STDERR "Cannot find fnum for '$path'";
+                die "Cannot find fnum for '$path'\n";
             }
         }
 

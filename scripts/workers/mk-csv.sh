@@ -16,7 +16,7 @@ source /home/u20/kyclark/bin/common.sh
 
 TARGET=$(mktemp)
 
-get_lines $FILE_LIST $TARGET ${PBS_ARRAY_INDEX:=1} $STEP_SIZE
+get_lines $FILE_LIST $TARGET ${PBS_ARRAY_INDEX:-1} ${STEP_SIZE:-1}
 
 NUM_FILES=$(lc $TARGET)
 
